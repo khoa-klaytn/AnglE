@@ -540,11 +540,11 @@ class AnglE:
                             load_in_4bit=True,
                             llm_int8_threshold=6.0,
                             llm_int8_has_fp16_weight=False,
-                            bnb_4bit_compute_dtype=torch.float32,
+                            bnb_4bit_compute_dtype=torch.bfloat16,
                             bnb_4bit_use_double_quant=True,
                             bnb_4bit_quant_type='nf4',
                         ),
-                        torch_dtype=torch.float32,
+                        torch_dtype=torch.bfloat16,
                         device_map=device_map,
                         trust_remote_code=True,
                     )
@@ -555,7 +555,7 @@ class AnglE:
                         model = PeftModel.from_pretrained(
                             model,
                             pretrained_lora_path,
-                            torch_dtype=torch.float32,
+                            torch_dtype=torch.bfloat16,
                             device_map=device_map,
                             is_trainable=train_mode
                         )
@@ -572,7 +572,7 @@ class AnglE:
                         model = AutoModelForCausalLM.from_pretrained(
                             model_name_or_path,
                             load_in_8bit=load_kbit == 8,
-                            torch_dtype=torch.float16 if load_kbit == 16 else torch.float32,
+                            torch_dtype=torch.float16 if load_kbit == 16 else torch.bfloat16,
                             device_map=device_map,
                             trust_remote_code=True,
                         )
@@ -583,7 +583,7 @@ class AnglE:
                             model = PeftModel.from_pretrained(
                                 model,
                                 pretrained_lora_path,
-                                torch_dtype=torch.float16 if load_kbit == 16 else torch.float32,
+                                torch_dtype=torch.float16 if load_kbit == 16 else torch.bfloat16,
                                 device_map=device_map,
                                 is_trainable=train_mode
                             )
@@ -676,12 +676,12 @@ class AnglE:
     def kbit_post_handle(model: nn.Module) -> nn.Module:
         for name, module in model.named_modules():
             if isinstance(module, LoraLayer):
-                module = module.to(torch.float32)
+                module = module.to(torch.bfloat16)
             if 'norm' in name:
-                module = module.to(torch.float32)
+                module = module.to(torch.bfloat16)
             if 'lm_head' in name or 'embed_tokens' in name:
                 if hasattr(module, 'weight'):
-                    module = module.to(torch.float32)
+                    module = module.to(torch.bfloat16)
         return model
 
     @staticmethod
