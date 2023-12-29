@@ -803,8 +803,8 @@ class AnglE:
 
         trainer.train()
         self.backbone.save_pretrained(output_dir)
-
-    def evaluate(self, data: Dataset, batch_size: int = 32, threshold: Optional[float] = None, device: Any = None):
+    
+    def predict(self, data: Dataset, batch_size: int = 32, device: Any = None):
         self.backbone.eval()
         data_collator = AngleDataCollator(
             self.tokenizer,
@@ -825,8 +825,10 @@ class AnglE:
             x_vecs = l2_normalize(x_vecs)
             pred = (x_vecs[::2] * x_vecs[1::2]).sum(1)
             y_preds.extend(pred)
+        return np.array(y_trues), np.array(y_preds)
 
-        y_trues, y_preds = np.array(y_trues), np.array(y_preds)
+    def evaluate(self, data: Dataset, batch_size: int = 32, threshold: Optional[float] = None, device: Any = None):
+        y_trues, y_preds = self.predict(data, batch_size=batch_size, device=device)
         corrcoef = compute_corrcoef(y_trues, y_preds)
         if threshold is None:
             _, accuracy = optimal_threshold(y_trues, y_preds)
