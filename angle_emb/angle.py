@@ -46,24 +46,24 @@ def categorical_crossentropy(y_true: torch.Tensor, y_pred: torch.Tensor, from_lo
   return -(torch.log(y_pred, dim=1) * y_true).sum(dim=1)
 
 
-def cosine_loss(y_true: torch.Tensor, y_pred: torch.Tensor, tau: float = 20.0):
+def cosine_loss(_y_true: torch.Tensor, _y_pred: torch.Tensor, tau: float = 20.0):
   # modified from: https://github.com/bojone/CoSENT/blob/124c368efc8a4b179469be99cb6e62e1f2949d39/cosent.py#L79
-  y_true = y_true[::2, 0]
+  y_true = _y_true[::2, 0]
   y_true = (y_true[:, None] < y_true[None, :]).float()
-  y_pred = F.normalize(y_pred, p=2, dim=1)
+  y_pred = F.normalize(_y_pred, p=2, dim=1)
   y_pred = torch.sum(y_pred[::2] * y_pred[1::2], dim=1) * tau
   y_pred = y_pred[:, None] - y_pred[None, :]
   y_pred = (y_pred - (1 - y_true) * 1e12).view(-1)
-  zero = torch.Tensor([0]).to(y_pred.device)
+  zero = torch.Tensor([0]).to(_y_pred.device)
   y_pred = torch.concat((zero, y_pred), dim=0)
   return torch.logsumexp(y_pred, dim=0)
 
 
-def angle_loss(y_true: torch.Tensor, y_pred: torch.Tensor, tau: float = 1.0):
-  y_true = y_true[::2, 0]
+def angle_loss(_y_true: torch.Tensor, _y_pred: torch.Tensor, tau: float = 1.0):
+  y_true = _y_true[::2, 0]
   y_true = (y_true[:, None] < y_true[None, :]).float()
 
-  y_pred_re, y_pred_im = torch.chunk(y_pred, 2, dim=1)
+  y_pred_re, y_pred_im = torch.chunk(_y_pred, 2, dim=1)
   a = y_pred_re[::2]
   b = y_pred_im[::2]
   c = y_pred_re[1::2]
@@ -86,22 +86,22 @@ def angle_loss(y_true: torch.Tensor, y_pred: torch.Tensor, tau: float = 1.0):
   y_pred = torch.abs(torch.sum(y_pred, dim=1)) * tau  # absolute delta angle
   y_pred = y_pred[:, None] - y_pred[None, :]
   y_pred = (y_pred - (1 - y_true) * 1e12).view(-1)
-  zero = torch.Tensor([0]).to(y_pred.device)
+  zero = torch.Tensor([0]).to(_y_pred.device)
   y_pred = torch.concat((zero, y_pred), dim=0)
   return torch.logsumexp(y_pred, dim=0)
 
 
-def in_batch_negative_loss(y_true: torch.Tensor,
-                           y_pred: torch.Tensor,
+def in_batch_negative_loss(_y_true: torch.Tensor,
+                           _y_pred: torch.Tensor,
                            tau: float = 20.0,
                            similar_matrix: Optional[torch.Tensor] = None,
                            negative_weights: float = 0.0):
   """in-batch negative loss
     """
-  device = y_true.device
+  device = _y_true.device
 
   def make_target_matrix(y_true: torch.Tensor):
-    idxs = torch.arange(0, y_pred.shape[0]).int().to(device)
+    idxs = torch.arange(0, _y_pred.shape[0]).int().to(device)
     y_true = y_true.int()
     idxs_1 = idxs[None, :]
     idxs_2 = (idxs + 1 - idxs % 2 * 2)[:, None]
@@ -115,14 +115,14 @@ def in_batch_negative_loss(y_true: torch.Tensor,
     y_true = (idxs_1 == idxs_2).float()
     return y_true
 
-  neg_mask = make_target_matrix(y_true == 0)
+  neg_mask = make_target_matrix(_y_true == 0)
 
-  y_true = make_target_matrix(y_true)
+  y_true = make_target_matrix(_y_true)
   if similar_matrix is not None:
     y_true += similar_matrix
 
   # compute similarity
-  y_pred = F.normalize(y_pred, dim=1, p=2)
+  y_pred = F.normalize(_y_pred, dim=1, p=2)
   similarities = y_pred @ y_pred.T  # dot product
   similarities = similarities - torch.eye(y_pred.shape[0]).to(device) * 1e12
   similarities = similarities * tau
@@ -431,6 +431,7 @@ class AngleTrainer(Trainer):
     similar_matrix = inputs.pop("similar_matrix", None)
     outputs = self.pooler(inputs)
     loss = self.loss_fct(labels, outputs, similar_matrix=similar_matrix)
+    loss.requires_grad = True
     return (loss, outputs) if return_outputs else loss
 
 
@@ -833,7 +834,7 @@ class AnglE:
       save_strategy: str = 'steps',
       save_total_limit: int = 10,
       gradient_accumulation_steps: int = 1,
-      bf16: Optional[bool] = None,
+      quant: Optional[bool] = "bf16",
       argument_kwargs: Optional[Dict] = None,
       trainer_kwargs: Optional[Dict] = None,
       loss_kwargs: Optional[Dict] = None,
@@ -846,12 +847,12 @@ class AnglE:
 
     if self.gpu_count > 1:
       gradient_accumulation_steps = gradient_accumulation_steps // self.gpu_count
-    if bf16 is None and self.is_llm:
-      bf16 = True
-    else:
-      bf16 = False
+    if quant is None and self.is_llm:
+      quant = "bf16"
     if argument_kwargs is None:
       argument_kwargs = {}
+    if quant is not None:
+      argument_kwargs[quant] = True
     if trainer_kwargs is None:
       trainer_kwargs = {}
     callbacks = None
@@ -878,7 +879,6 @@ class AnglE:
                                warmup_steps=warmup_steps,
                                num_train_epochs=epochs,
                                learning_rate=learning_rate,
-                               bf16=bf16,
                                logging_steps=logging_steps,
                                save_strategy=save_strategy,
                                eval_steps=eval_steps,
