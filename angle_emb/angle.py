@@ -431,7 +431,8 @@ class AngleTrainer(Trainer):
     similar_matrix = inputs.pop("similar_matrix", None)
     outputs = self.pooler(inputs)
     loss = self.loss_fct(labels, outputs, similar_matrix=similar_matrix)
-    loss.requires_grad = True
+    if loss.is_leaf:
+      loss.requires_grad = True
     return (loss, outputs) if return_outputs else loss
 
 
